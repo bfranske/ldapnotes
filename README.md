@@ -309,3 +309,12 @@ $ ldapwhoami -H ldaps://127.0.0.1 -x
 1. [fkooman gives an excellent starting point for online configuration of OpenLDAP with Argon2 configuration](https://codeberg.org/fkooman/paste/src/branch/main/LDAP_SETUP.md) though it still uses the deprecated memberof overlay instead of the dynlist replacement. Much of this page is inspired by this work.
 2. [Puzzle ITC has some information about configuring additional Argon2 parameters in this post](https://www.puzzle.ch/de/blog/articles/2023/08/08/enhancing-openldap-security-with-argon2) though it is focused on Rocky Linux and pushign configuration via Ansible instead of directly configuring OpenLDAP which is more suitable for a tutorial.
 3. [The online book LDAP for Rocket Scientists at zytrax.com](https://www.zytrax.com/books/ldap/) is perhaps the most thorough treatment of OpenLDAP and a great place to go now that you have your feet wet. However, it is a bit of drinking from a firehose  when your're just getting started, still has a lot of slapd.conf style configuration details, and lacks information on things like configuring dynamic lists in an online configuration environment.
+
+# License 
+This file is licensed under a
+[Creative Commons Attribution-ShareAlike 4.0 International License][cc-by-sa].
+
+[![CC BY-SA 4.0][cc-by-sa-image]][cc-by-sa]
+
+[cc-by-sa]: http://creativecommons.org/licenses/by-sa/4.0/
+[cc-by-sa-image]: https://licensebuttons.net/l/by-sa/4.0/88x31.png
