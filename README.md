@@ -192,15 +192,118 @@ $ ldapsearch -LLL -x -D 'cn=nbosco,ou=people,dc=example,dc=com' -W -b 'ou=people
 ```
 Note this time that we see the userPassword attribute though it is still Base64 encoded (as could be other attributes) because it is a UTF-8 encoded value. Base64 encoded values are denoted in ldapsearch output by a double colon `::` after the attribute name.
 
+# Adding Groups and Users to Groups
+
+It's common that you want to put users into one or more groups for security or administrative reasons. Groups can be created in the directory as the objectClass groupOfNames (or in some cases groupOfUniqueNames) and are typically stored in an OU separate from people. Note that the directory schema requires a member attribute for groupOfNames so we need to put an empty member attribute in if we don't want to have any users in the group (initially or in the future).
+
+Create two sample groups (staff and students) in the groups OU:
+```
+$ ldapadd -x -D 'cn=admin,dc=example,dc=com' -W << EOF
+dn: cn=staff,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: Staff
+member: 
+EOF
+$ ldapadd -x -D 'cn=admin,dc=example,dc=com' -W << EOF
+dn: cn=students,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: Students
+member: 
+EOF
+```
+
+Add the nbosco user to the staff group:
+```
+$ ldapmodify -x -D 'cn=admin,dc=example,dc=com' -W << EOF
+dn: cn=staff,ou=groups,dc=example,dc=com
+changetype: modify
+add: member
+member: cn=nbosco,ou=people,dc=example,dc=com
+EOF
+```
+
+List the users in the staff group:
+```
+$ ldapsearch -LLL -x -b cn=staff,ou=groups,dc=example,dc=com
+```
+
 # Adding Support for Dynamic List memberOf User Attribute
 
-Coming Soon!
+It is frequently the case that software querying the directory for a user's entry will want to know what groups the user belongs to. Unfortunately right now you need to query all of the groups and look to see if the user's dn is listed as a member to have that information. This is both inefficient and often not supported by the software accessing the directory. Fortunately there is a common solution, storing a list of all the groups the user belongs to as a user attribute named memberOf. The question is how to keep that up to date when the user is added and removed from groups. OpenLDAP supports the use of *overlays* which allow this type of on-the-fly attribute creation.
 
-# Adding Groups and Users to Groups
+It used to be the case that an overlay named *memberof* provided this functionality. However, *memberof* has been deprecated and is being replaced with the *dynlist* overlay which is both more flexible to other situations where you want an internal query to provide the value of an attribute and a bit more complex to configure. Documentation on properly configuring *dynlist* to provide the memberOf attribute for users is a bit thin to begin with and there is no real documentation to be found on doing it with online configuration instead of slapd.conf. Luckily this tutorial will show you how to do it.
+
+First, add the dyngroup schema into your directory by importing the LDIF that defines it (the location of the LDIF below is where Debian stores it, if you are on a non-Debian system it may be elsewhere or can be downloaded from the Internet):
+```
+$ sudo ldapadd -Q -Y EXTERNAL -H ldapi:/// -D "cn=config" -W -f /etc/ldap/schema/dyngroup.ldif
+```
+This is needed so that you will have access to the objectClass *olcDynamicList* which you will need below to configure the module.
+
+Next, load the dynlist module:
+```
+$ sudo ldapmodify -Q -Y EXTERNAL -H ldapi:/// << EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: dynlist
+EOF
+```
+
+Finally, configure dynlist to generate the memberOf attribute if the entry is listed as a member in a groupOfNames:
+```
+$ sudo ldapadd -Q -Y EXTERNAL -H ldapi:/// << EOF
+dn: olcOverlay=dynlist,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcDynamicList
+olcOverlay: dynlist
+olcDlAttrSet: groupOfURLs memberURL member+memberOf@groupOfNames
+EOF
+```
+
+If all went as expected you can query nbosco user for the memberOf attribute and get a list of all the groups they are a member of:
+```
+$ ldapsearch -LLL -x -b ou=people,dc=example,dc=com cn=nbosco memberOf
+```
+Note that becasue the memberOf attribute is generated on the fly by dynlist simply querying for a user (e.g. `ldapsearch -LLL -x -b ou=people,dc=example,dc=com cn=nbosco`) will not show the memberOf attribute, you must specifically query for the memberOf attribute.
 
 # Enabling TLS with LDAPS
 
-Coming Soon!
+Because LDAP puts a lot of sensitve information (such as passwords for authentication) over the wire in plain text it is a best practice to secure the connection to the directory server with TLS unless you are in a very controlled network environment (and probably even then). Creating PKI certificate authorities, certificates, and private keys is outside the scope of this tutorial. Sufficie it to say you will need a certificate authority certificate, a server certificate signed by the CA and private key, and optionally a client certificate signed by the CA if you want to require the client provide a certificate for mutual authentication when interacting with the server.
+
+Configure OpenLDAP to use the CA certificate, server certificate, and server key file for SSL, update the paths to the certificates and keys as needed:
+```
+$ sudo ldapmodify -H ldapi:/// -Y EXTERNAL << EOF
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateFile
+olcTLSCertificateFile: /etc/ssl/certs/ldap.example.crt
+-
+replace: olcTLSCertificateKeyFile
+olcTLSCertificateKeyFile: /etc/ssl/private/ldap.example.key
+-
+replace: olcTLSCACertificateFile
+olcTLSCACertificateFile: /etc/ssl/certs/ca.crt
+EOF
+```
+
+Optionally, you may also want to require the client provide a certificate for mutual authentication which has been signed by the CA:
+```
+$ sudo ldapmodify -H ldapi:/// -Y EXTERNAL << EOF
+dn: cn=config
+changetype: modify
+replace: olcTLSVerifyClient
+olcTLSVerifyClient: demand
+EOF
+```
+The options for *olcTLSVerifyClient* are *{ never | allow | try | demand }*.
+
+You must also modify the startup settings of slapd to enable TLS on port 636. On Debian this is done by editing the `/etc/default/slapd` file and adding `ldaps:///` to the `SLAPD_SERVICES=` line. After doing this you need to restart slapd.
+
+If you want to test TLS connectivity from the command line and have enabled mutual authentication you can set some environment variables with the paths to the CA certificate, client certificate, and client key before running LDAP commands:
+```
+$ LDAPTLS_CACERT=ca.crt LDAPTLS_CERT=ldap-client.crt LDAPTLS_KEY=ldap-client.key
+$ ldapwhoami -H ldaps://127.0.0.1 -x
+```
 
 # Resources
 1. [fkooman gives an excellent starting point for online configuration of OpenLDAP with Argon2 configuration](https://codeberg.org/fkooman/paste/src/branch/main/LDAP_SETUP.md) though it still uses the deprecated memberof overlay instead of the dynlist replacement. Much of this page is inspired by this work.
