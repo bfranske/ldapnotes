@@ -314,7 +314,7 @@ dn: olcOverlay=ppolicy,olcDatabase={1}mdb,cn=config
 objectClass: olcOverlayConfig
 objectClass: olcPPolicyConfig
 olcOverlay: ppolicy
-olcPPolicyDefault: cn=default,ou=policies,dc=exampe,dc=com
+olcPPolicyDefault: cn=default,ou=policies,dc=example,dc=com
 olcPPolicyHashCleartext: FALSE
 olcPPolicyUseLockout: FALSE
 olcPPolicyForwardUpdates: FALSE
@@ -358,6 +358,18 @@ If you want to test TLS connectivity from the command line and have enabled mutu
 ```
 $ LDAPTLS_CACERT=ca.crt LDAPTLS_CERT=ldap-client.crt LDAPTLS_KEY=ldap-client.key
 $ ldapwhoami -H ldaps://127.0.0.1 -x
+```
+
+# Useful Checks
+
+Check which modules are loaded:
+```
+$ sudo ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config "(objectClass=olcModuleList)" olcModuleLoad -LLL
+```
+
+See all (operational and non-operational attributes for a user:
+```
+$ ldapsearch -LLL -x -D 'cn=admin,dc=example,dc=com' -W -b 'ou=people,dc=example,dc=com' cn=nbosco '*' '+'
 ```
 
 # Resources
