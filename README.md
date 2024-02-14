@@ -266,6 +266,61 @@ $ ldapsearch -LLL -x -b ou=people,dc=example,dc=com cn=nbosco memberOf
 ```
 Note that becasue the memberOf attribute is generated on the fly by dynlist simply querying for a user (e.g. `ldapsearch -LLL -x -b ou=people,dc=example,dc=com cn=nbosco`) will not show the memberOf attribute, you must specifically query for the memberOf attribute.
 
+# Enabling Account Lockout After Incorrect Passwords
+
+It's common on authentication systems to slow down online password attacks by locking out accounts which have had several incorrect password attempts. This is possible in OpenLDAP using the password policy module.
+
+First, create an OU to hold default policies:
+```
+$ ldapadd -x -D 'cn=admin,dc=example,dc=com' -W << EOF
+dn: ou=policies,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Policies
+EOF
+```
+
+Next, load the ppolicy module:
+```
+$ sudo ldapmodify -Q -Y EXTERNAL -H ldapi:/// << EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: ppolicy
+EOF
+```
+
+Create a default password policy:
+```
+$ ldapadd -x -D 'cn=admin,dc=example,dc=com' -W << EOF
+dn: cn=default,ou=policies,dc=example,dc=com
+cn: default
+objectClass: pwdPolicy
+objectClass: person
+objectClass: top
+pwdAttribute: userPassword
+pwdFailureCountInterval: 300
+pwdLockoutDuration: 600
+pwdLockout: TRUE
+pwdMaxFailure: 5
+sn: dummy value
+EOF
+```
+This policy will lock out accounts for 10 minutes if more than 5 wrong passwords are used within 5 minutes. With changes or additional paramters the password policy can lock accounts until an administrator unlocks them or other password policies can be enforced.
+
+Configure the ppolicy overlay to use the default password policy you just created:
+```
+$ sudo ldapadd -Q -Y EXTERNAL -H ldapi:/// << EOF
+dn: olcOverlay=ppolicy,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcPPolicyConfig
+olcOverlay: ppolicy
+olcPPolicyDefault: cn=default,ou=policies,dc=exampe,dc=com
+olcPPolicyHashCleartext: FALSE
+olcPPolicyUseLockout: FALSE
+olcPPolicyForwardUpdates: FALSE
+EOF
+```
+
 # Enabling TLS with LDAPS
 
 Because LDAP puts a lot of sensitve information (such as passwords for authentication) over the wire in plain text it is a best practice to secure the connection to the directory server with TLS unless you are in a very controlled network environment (and probably even then). Creating PKI certificate authorities, certificates, and private keys is outside the scope of this tutorial. Sufficie it to say you will need a certificate authority certificate, a server certificate signed by the CA and private key, and optionally a client certificate signed by the CA if you want to require the client provide a certificate for mutual authentication when interacting with the server.
