@@ -167,7 +167,7 @@ $ ldapadd -x -D 'cn=admin,dc=example,dc=com' -W << EOF
 dn: cn=nbosco,ou=people,dc=example,dc=com
 gn: Natalia
 cn: nbosco
-displayName: Natalia
+displayName: Natalia Bosco
 sn: Bosco
 objectClass: person
 objectClass: inetOrgPerson
@@ -360,6 +360,65 @@ $ LDAPTLS_CACERT=ca.crt LDAPTLS_CERT=ldap-client.crt LDAPTLS_KEY=ldap-client.key
 $ ldapwhoami -H ldaps://127.0.0.1 -x
 ```
 
+# Working With Access Control Lists
+
+There are some default access control lists in place but you may want to modify them.
+
+If you want to make nbosco a full administrative user who can adjust the *configuration* of the directory:
+```
+$ sudo ldapmodify -Q -Y EXTERNAL -H ldapi:/// << EOF
+dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: to * by dn="cn=nbosco,ou=people,dc=example,dc=com" manage by * break
+EOF
+```
+After doing this when viewing or making changes to cn=config you can bind to ldapmodify, ldapsearch, etc with "cn=nbosco,ou=people,dc=example,dc=com" instead of using ldapi:/// and sudo. See the next search for an example.
+
+Because ACLs are interpreted from top to bottom with jsut the first match counting (unless a "by * break" concludes the ACL entry) and then implictly denied and the intial ACL setup in Debian for our database ends in a "to * by * read" entry we probably need to rewrite all the ACL entries to get the order correct if we want to make changes. First let's see the current ACL entries:
+```
+$ sudo ldapsearch -Y EXTERNAL -H ldapi:/// -b olcDatabase={1}mdb,cn=config olcAccess -LLL
+```
+If you have given nbosco full access to the cn=config tree (as above) you could instead use:
+```
+$ ldapsearch -x -D "cn=nbosco,ou=people,dc=example,dc=com" -W -b cn=config olcAccess -LLL
+```
+
+In either event, the three existing ACL entries in my directory look like:
+```
+dn: olcDatabase={1}mdb,cn=config
+olcAccess: {0}to attrs=userPassword by self write by anonymous auth by * none
+olcAccess: {1}to attrs=shadowLastChange by self write by * read
+olcAccess: {2}to * by * read
+```
+
+So, to add nbosco as an administrator on the example.com directory you may want to setup a first ACL entry for them like:
+```
+$ sudo ldapmodify -Q -Y EXTERNAL -H ldapi:/// << EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: to * by dn="cn=nbosco,ou=people,dc=example,dc=com" manage by * break
+olcAccess: to attrs=userPassword by self write by anonymous auth by * none
+olcAccess: to attrs=shadowLastChange by self write by * read
+olcAccess: to * by * read
+EOF
+```
+Again, if nbosco has rights to modify cn=config you could instead use:
+```
+$ ldapmodify -x -D "cn=nbosco,ou=people,dc=example,dc=com" -W << EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: to * by dn="cn=nbosco,ou=people,dc=example,dc=com" manage by * break
+olcAccess: to attrs=userPassword by self write by anonymous auth by * none
+olcAccess: to attrs=shadowLastChange by self write by * read
+olcAccess: to * by * read
+EOF
+```
+
+There are many more features and complexities to OpenLDAP ACLs, for example using regular expressions to expand to DNs for access or assigning groups to manage permissions, but this should get you started and those are not too difficult to find examples of.
+
 # Useful Checks
 
 Check which modules are loaded:
@@ -370,6 +429,11 @@ $ sudo ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config "(objectClass=olcModuleL
 See all (operational and non-operational attributes for a user:
 ```
 $ ldapsearch -LLL -x -D 'cn=admin,dc=example,dc=com' -W -b 'ou=people,dc=example,dc=com' cn=nbosco '*' '+'
+```
+
+See all access control lists in the directory:
+```
+$ sudo ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=config olcAccess -LLL
 ```
 
 # Resources
