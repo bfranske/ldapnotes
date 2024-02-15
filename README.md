@@ -292,8 +292,8 @@ EOF
 Create a default password policy:
 ```
 $ ldapadd -x -D 'cn=admin,dc=example,dc=com' -W << EOF
-dn: cn=default,ou=policies,dc=example,dc=com
-cn: default
+dn: cn=defaultPwdPolicy,ou=policies,dc=example,dc=com
+cn: defaultPwdPolicy
 objectClass: pwdPolicy
 objectClass: person
 objectClass: top
@@ -314,7 +314,7 @@ dn: olcOverlay=ppolicy,olcDatabase={1}mdb,cn=config
 objectClass: olcOverlayConfig
 objectClass: olcPPolicyConfig
 olcOverlay: ppolicy
-olcPPolicyDefault: cn=default,ou=policies,dc=example,dc=com
+olcPPolicyDefault: cn=defaultPwdPolicy,ou=policies,dc=example,dc=com
 olcPPolicyHashCleartext: FALSE
 olcPPolicyUseLockout: FALSE
 olcPPolicyForwardUpdates: FALSE
